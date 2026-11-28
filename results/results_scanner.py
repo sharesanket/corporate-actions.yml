@@ -1,4 +1,3 @@
-
 """
 Share Sanket - Results Scanner
 
@@ -68,8 +67,12 @@ RESULT_KEYWORDS = (
 
 def is_financial_results_announcement(item):
     """
-    Accept only Outcome of Board Meeting announcements
-    whose details explicitly refer to financial results.
+    Accept only Outcome of Board Meeting announcements that are confirmed
+    by either explicit NSE announcement text or successful official-PDF
+    extraction in the Source Adapter.
+
+    Generic/blank attachment descriptions are valid when the Source Adapter
+    has already verified the attached PDF as a financial-results statement.
     """
 
     if not isinstance(item, dict):
@@ -81,10 +84,18 @@ def is_financial_results_announcement(item):
     if "outcome of board meeting" not in subject:
         return False
 
-    return any(
-        keyword in details
+    metadata_confirms_results = any(
+        keyword in f"{subject} {details}"
         for keyword in RESULT_KEYWORDS
     )
+
+    pdf_status = item.get("pdf_extraction", {})
+    pdf_confirms_results = (
+        isinstance(pdf_status, dict)
+        and pdf_status.get("status") == "extracted"
+    )
+
+    return metadata_confirms_results or pdf_confirms_results
 
 
 def now_ist():
