@@ -1,4 +1,4 @@
 requests
 pypdf
 yfinance
-
+pypdf>=5.0,<7
