@@ -4,6 +4,7 @@ import re
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -15,6 +16,11 @@ try:
 except Exception:
     yf = None
 
+try:
+    from pypdf import PdfReader
+except Exception:
+    PdfReader = None
+
 
 BASE_DIR = Path(__file__).resolve().parent
 ALERTS_FILE = BASE_DIR / "alerts.json"
@@ -24,6 +30,8 @@ IST = ZoneInfo("Asia/Kolkata")
 CATEGORY = "order_wins"
 LOOKBACK_DAYS = 2
 MAX_STATE = 5000
+MAX_PDF_BYTES = 12 * 1024 * 1024
+NSE_BASE_URL = "https://www.nseindia.com"
 
 BOT_TOKEN = os.getenv("RESULTS_TELEGRAM_BOT_TOKEN", "")
 CHAT_ID = os.getenv("RESULTS_TELEGRAM_CHAT_ID", "")
@@ -144,27 +152,124 @@ def load_state():
         return []
 
 
+def _amount_to_crore(number_text, unit_text=""):
+    try:
+        number = float(str(number_text).replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+    unit = (unit_text or "").lower().strip()
+    if unit.startswith("cr"):
+        return number
+    if unit.startswith(("lak", "lac")):
+        return number / 100
+    if unit.startswith(("mn", "million")):
+        return number / 10
+    if unit in ("bn", "billion"):
+        return number * 100
+    return None
+
+
+# Accept currency-prefixed values and explicit crore/lakh amounts. A bare
+# number is intentionally not treated as money without a clear unit.
+ORDER_AMOUNT = re.compile(
+    r"(?:(?:₹|\bRs\.?|\bINR)\s*)?"
+    r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*"
+    r"(crores?|crs?|cr|lakhs?|lacs?|millions?|mn|billions?|bn)\b",
+    re.I,
+)
+ORDER_CONTEXT = re.compile(
+    r"\b(order\s+(?:value|worth|size|valued|amounting|of|for)|value\s+of\s+(?:the\s+)?order|"
+    r"contract\s+(?:value|worth|valued|amounting)|aggregat(?:e|ing|es|ed)\s+(?:to|of)|"
+    r"purchase\s+order|work\s+order|letter\s+of\s+award|LOA)\b",
+    re.I,
+)
+
+
 def order_value_crore(text):
-    """Return the largest disclosed amount in crore, or None."""
-    best = None
-    for match in MONEY.finditer(text or ""):
-        number = float(match.group(1).replace(",", ""))
-        unit = (match.group(2) or "").lower()
-
-        if unit.startswith("cr"):
-            crore = number
-        elif unit.startswith(("lak", "lac")):
-            crore = number / 100
-        elif unit.startswith(("mn", "million")):
-            crore = number / 10
-        elif unit == "":
-            crore = number / 10_000_000
-        else:
+    """Extract only an amount explicitly tied to an order/contract context."""
+    if not text:
+        return None
+    lines = [re.sub(r"\s+", " ", line).strip() for line in str(text).splitlines()]
+    candidates = []
+    for index, line in enumerate(lines):
+        if not line:
             continue
+        context = bool(ORDER_CONTEXT.search(line))
+        # Include the immediately following line when a filing splits the
+        # label and amount across lines, but do not scan unrelated paragraphs.
+        window = line
+        if index + 1 < len(lines) and context:
+            window += " " + lines[index + 1]
+        if not context:
+            continue
+        for match in ORDER_AMOUNT.finditer(window):
+            value = _amount_to_crore(match.group(1), match.group(2))
+            if value is not None and value > 0:
+                candidates.append(value)
+    # Ambiguous filings can contain several order-related amounts. Return
+    # the first contextual amount, not the largest unrelated financial figure.
+    return round(candidates[0], 2) if candidates else None
 
-        best = crore if best is None else max(best, crore)
 
-    return best
+def normalize_nse_pdf_url(raw_url):
+    """Convert NSE attachment paths into a directly usable HTTPS URL."""
+    raw_url = str(raw_url or "").strip()
+    if not raw_url:
+        return ""
+    url = urljoin(NSE_BASE_URL + "/", raw_url)
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return ""
+    # NSE archive links are sometimes returned over HTTP; force HTTPS.
+    host = (parsed.hostname or "").lower()
+    if host == "nseindia.com" or host.endswith(".nseindia.com"):
+        url = parsed._replace(scheme="https").geturl()
+    return url
+
+
+def extract_pdf_text(pdf_url):
+    """Download and extract text from an NSE PDF; fail safely if unavailable."""
+    if not pdf_url or PdfReader is None:
+        if PdfReader is None:
+            print("pypdf is not installed; PDF extraction skipped.")
+        return ""
+    try:
+        response = requests.get(
+            pdf_url,
+            headers={**HEADERS, "Referer": NSE_BASE_URL + "/"},
+            timeout=(10, 35),
+            stream=True,
+        )
+        response.raise_for_status()
+        chunks = []
+        total = 0
+        for chunk in response.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > MAX_PDF_BYTES:
+                print("NSE PDF exceeds size limit; extraction skipped.")
+                return ""
+            chunks.append(chunk)
+        content = b"".join(chunks)
+        if not content.startswith(b"%PDF"):
+            print(f"NSE attachment is not a readable PDF: {pdf_url}")
+            return ""
+        from io import BytesIO
+        reader = PdfReader(BytesIO(content), strict=False)
+        pages = []
+        for page in reader.pages[:30]:
+            try:
+                pages.append(page.extract_text() or "")
+            except Exception:
+                continue
+        extracted = "\n".join(pages).strip()
+        if not extracted:
+            print(f"No selectable text found in NSE PDF: {pdf_url}")
+        return extracted
+    except Exception as error:
+        print(f"NSE PDF download/extraction failed for {pdf_url}: {error}")
+        return ""
 
 
 def company_fundamentals(symbol):
@@ -194,14 +299,9 @@ def company_fundamentals(symbol):
         result = {
             "market_cap_crore": number("marketCap", 10_000_000),
             "trailing_pe": number("trailingPE"),
-            "forward_pe": number("forwardPE"),
             "price_to_book": number("priceToBook"),
-            "trailing_eps": number("trailingEps"),
-            "enterprise_value": number("enterpriseValue", 10_000_000),
             "fifty_two_week_high": number("fiftyTwoWeekHigh"),
             "fifty_two_week_low": number("fiftyTwoWeekLow"),
-            "sector": info.get("sector") or None,
-            "industry": info.get("industry") or None,
         }
     except Exception as error:
         print(f"Company fundamentals lookup failed for {ticker}: {error}")
@@ -282,8 +382,14 @@ def is_bagging(item):
 
 
 def build_alert(item):
-    text = f"{item.get('title', '')}\n{item.get('details', '')}"
-    order_crore = order_value_crore(text)
+    source_link = normalize_nse_pdf_url(item.get("link"))
+    announcement_text = f"{item.get('title', '')}\n{item.get('details', '')}"
+    order_crore = order_value_crore(announcement_text)
+    pdf_text = ""
+    if order_crore is None and source_link:
+        pdf_text = extract_pdf_text(source_link)
+        order_crore = order_value_crore(pdf_text)
+
     fundamentals = company_fundamentals(item.get("symbol"))
     mcap_crore = fundamentals.get("market_cap_crore")
     folder, percent = size_folder(order_crore, mcap_crore)
@@ -313,16 +419,12 @@ def build_alert(item):
         "market_cap_crore": round(mcap_crore, 2) if mcap_crore is not None else None,
         "order_percent_of_mcap": percent,
         "trailing_pe": fundamentals.get("trailing_pe"),
-        "forward_pe": fundamentals.get("forward_pe"),
         "price_to_book": fundamentals.get("price_to_book"),
-        "trailing_eps": fundamentals.get("trailing_eps"),
-        "enterprise_value": fundamentals.get("enterprise_value"),
         "fifty_two_week_high": fundamentals.get("fifty_two_week_high"),
         "fifty_two_week_low": fundamentals.get("fifty_two_week_low"),
-        "sector": fundamentals.get("sector"),
-        "industry": fundamentals.get("industry"),
         "time": item["time"],
-        "link": item["link"],
+        "link": source_link,
+        "pdf_text_extracted": bool(pdf_text),
         "detected_at": now_ist(),
         "telegram_notified": False,
     }
@@ -388,6 +490,13 @@ def main():
     ensure_order_folders(data)
 
     old_alerts = data["alerts"]
+    # Remove obsolete fundamentals from legacy order records; the app now
+    # exposes only P/E, Price-to-book and the 52-week range.
+    obsolete_fields = ("forward_pe", "trailing_eps", "enterprise_value", "sector", "industry")
+    for old_alert in old_alerts:
+        if is_order_alert(old_alert):
+            for field in obsolete_fields:
+                old_alert.pop(field, None)
     state = load_state()
     first_run = state is None
 
@@ -497,3 +606,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
