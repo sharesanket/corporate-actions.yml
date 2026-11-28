@@ -177,38 +177,107 @@ ORDER_AMOUNT = re.compile(
     r"(crores?|crs?|cr|lakhs?|lacs?|millions?|mn|billions?|bn)\b",
     re.I,
 )
+# Explicit INR amounts may be written as bare rupees (e.g. Rs.
+# 1,45,74,94,130/-) or with a unit (INR 136 crore).
+INR_AMOUNT = re.compile(
+    r"(?:₹|\bRs\.?|\bINR)\s*"
+    r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*"
+    r"(crores?|crs?|cr|lakhs?|lacs?|millions?|mn|billions?|bn)?\b",
+    re.I,
+)
 ORDER_CONTEXT = re.compile(
-    r"\b(order\s+(?:value|worth|size|valued|amounting|of|for)|value\s+of\s+(?:the\s+)?order|"
-    r"contract\s+(?:value|worth|valued|amounting)|aggregat(?:e|ing|es|ed)\s+(?:to|of)|"
-    r"purchase\s+order|work\s+order|letter\s+of\s+award|LOA)\b",
+    r"\b(order\s+(?:value|worth|size|valued|amounting|of|for)|"
+    r"value\s+of\s+(?:the\s+)?order|"
+    r"contract\s+(?:value|worth|valued|amounting)|"
+    r"aggregat(?:e|ing|es|ed)\s+(?:to|of)|"
+    r"purchase\s+order|work\s+order|letter\s+of\s+award|LOA|"
+    r"broad\s+consideration|consideration\s+or\s+size|"
+    r"size\s+of\s+(?:the\s+)?order|order\s*/\s*contract)\b",
+    re.I,
+)
+ORDER_SIZE_ROW = re.compile(
+    r"(?:broad\s+consideration|consideration\s+or\s+size|"
+    r"broad\s+consideration\s+or\s+size|"
+    r"size\s+of\s+(?:the\s+)?order(?:\s*/\s*contract)?|"
+    r"order\s*/\s*contract\s+value)",
     re.I,
 )
 
 
+def _inr_amount_to_crore(number_text, unit_text=""):
+    """Convert an explicitly INR-denominated amount to crore."""
+    try:
+        number = float(str(number_text).replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+    unit = (unit_text or "").lower().strip()
+    if unit.startswith("cr"):
+        value = number
+    elif unit.startswith(("lak", "lac")):
+        value = number / 100
+    elif unit.startswith(("mn", "million")):
+        value = number / 10
+    elif unit.startswith(("bn", "billion")):
+        value = number * 100
+    else:
+        # A currency-marked number without a scale is in rupees.
+        value = number / 10_000_000
+    return round(value, 2) if value > 0 else None
+
+
+def _first_inr_amount(text):
+    """Return the first explicit INR amount in a short order-value passage."""
+    for match in INR_AMOUNT.finditer(text or ""):
+        value = _inr_amount_to_crore(match.group(1), match.group(2) or "")
+        if value is not None:
+            return value
+    return None
+
+
 def order_value_crore(text):
-    """Extract only an amount explicitly tied to an order/contract context."""
+    """Extract an order value from announcement text or NSE Annexure tables.
+
+    Supports Indian comma grouping (Rs. 1,45,74,94,130/-), explicit INR
+    crore values, and foreign-currency disclosures that also state an INR
+    equivalent (e.g. USD 14.63 Million (approx. INR 136 crore)). The INR
+    equivalent is preferred; USD alone is never silently converted.
+    """
     if not text:
         return None
-    lines = [re.sub(r"\s+", " ", line).strip() for line in str(text).splitlines()]
-    candidates = []
-    for index, line in enumerate(lines):
-        if not line:
-            continue
-        context = bool(ORDER_CONTEXT.search(line))
-        # Include the immediately following line when a filing splits the
-        # label and amount across lines, but do not scan unrelated paragraphs.
-        window = line
-        if index + 1 < len(lines) and context:
-            window += " " + lines[index + 1]
-        if not context:
-            continue
-        for match in ORDER_AMOUNT.finditer(window):
-            value = _amount_to_crore(match.group(1), match.group(2))
-            if value is not None and value > 0:
-                candidates.append(value)
-    # Ambiguous filings can contain several order-related amounts. Return
-    # the first contextual amount, not the largest unrelated financial figure.
-    return round(candidates[0], 2) if candidates else None
+
+    raw = str(text).replace("\u00a0", " ")
+    flat = re.sub(r"\s+", " ", raw).strip()
+    if not flat:
+        return None
+
+    # NSE/SEBI Annexure A row: “Broad consideration or size of
+    # order(s)/contract(s)”. Table extraction may place the label and value
+    # in adjacent cells/lines, so inspect a bounded window after the label.
+    for label in ORDER_SIZE_ROW.finditer(flat):
+        window = flat[label.end():label.end() + 900]
+        value = _first_inr_amount(window)
+        if value is not None:
+            return value
+
+    # Other clearly order-related disclosures. Search only a bounded context
+    # around each phrase, preferring explicit INR amounts over USD figures.
+    for context in ORDER_CONTEXT.finditer(flat):
+        before = flat[max(0, context.start() - 180):context.start()]
+        after = flat[context.end():context.end() + 700]
+        value = _first_inr_amount(after) or _first_inr_amount(before)
+        if value is not None:
+            return value
+
+    # Also handle a phrase where the order value precedes the wording, such
+    # as “Rs. 50 crore order”. Keep the look-back deliberately short.
+    for match in INR_AMOUNT.finditer(flat):
+        following = flat[match.end():match.end() + 180]
+        if ORDER_CONTEXT.search(following):
+            value = _inr_amount_to_crore(match.group(1), match.group(2) or "")
+            if value is not None:
+                return value
+
+    return None
 
 
 def normalize_nse_pdf_url(raw_url):
@@ -606,4 +675,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
