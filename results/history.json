@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-29T00:41:12.549624+05:30",
+  "updated": "2026-11-29T00:43:32.798586+05:30",
   "results": [
     {
       "symbol": "SFCTECH",
@@ -110,7 +110,7 @@
       },
       "rating": "Excellent",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549263+05:30"
+      "processed_at": "2026-11-29T00:43:32.798111+05:30"
     },
     {
       "symbol": "SETCO",
@@ -184,8 +184,8 @@
           "revenue_growth_available": true
         }
       },
-      "data_status": "NSE announcement detected; financial figures not yet verified",
-      "financial_units": "Not specified",
+      "data_status": "Official NSE PDF downloaded; figures extracted where table rows were reliably recognised. Existing verified values preserved.",
+      "financial_units": "INR crore (EPS in INR/share)",
       "pdf_extraction": {
         "status": "extracted",
         "source_url": "https://nsearchives.nseindia.in/corporate/SETCO_27112026160110_FINAL_SIGNED_OUTCOME_27112026.pdf",
@@ -193,7 +193,7 @@
           "standalone": 4,
           "consolidated": 12
         },
-        "source_file": "tmphgyi4m3x.pdf",
+        "source_file": "tmpw5jaawfe.pdf",
         "method": "pypdf text extraction",
         "missing_values_policy": "Dashes and unrecognised rows remain unavailable",
         "unit_conflict": false,
@@ -240,7 +240,7 @@
       },
       "rating": "Strong",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549362+05:30"
+      "processed_at": "2026-11-29T00:43:32.798219+05:30"
     },
     {
       "symbol": "ENRIN",
@@ -281,7 +281,7 @@
           "revenue_growth_available": false
         }
       },
-      "data_status": "NSE announcement detected; financial figures not yet verified",
+      "data_status": "NSE board-meeting outcome detected; checking official PDF for financial-results tables",
       "financial_units": "Not specified",
       "pdf_extraction": {
         "status": "not_extracted",
@@ -298,7 +298,7 @@
       },
       "rating": "Insufficient Data",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549402+05:30"
+      "processed_at": "2026-11-29T00:43:32.798267+05:30"
     },
     {
       "symbol": "SIMBHALS",
@@ -339,7 +339,7 @@
           "revenue_growth_available": false
         }
       },
-      "data_status": "NSE announcement detected; financial figures not yet verified",
+      "data_status": "NSE board-meeting outcome detected; checking official PDF for financial-results tables",
       "financial_units": "Not specified",
       "pdf_extraction": {
         "status": "not_extracted",
@@ -356,7 +356,7 @@
       },
       "rating": "Insufficient Data",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549436+05:30"
+      "processed_at": "2026-11-29T00:43:32.798312+05:30"
     },
     {
       "symbol": "MKJEWELS",
@@ -397,7 +397,7 @@
           "revenue_growth_available": false
         }
       },
-      "data_status": "NSE announcement detected; financial figures not yet verified",
+      "data_status": "NSE board-meeting outcome detected; checking official PDF for financial-results tables",
       "financial_units": "Not specified",
       "pdf_extraction": {
         "status": "not_extracted",
@@ -414,7 +414,7 @@
       },
       "rating": "Insufficient Data",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549465+05:30"
+      "processed_at": "2026-11-29T00:43:32.798354+05:30"
     },
     {
       "symbol": "LEXUS",
@@ -455,7 +455,7 @@
           "revenue_growth_available": false
         }
       },
-      "data_status": "NSE announcement detected; financial figures not yet verified",
+      "data_status": "NSE board-meeting outcome detected; checking official PDF for financial-results tables",
       "financial_units": "Not specified",
       "pdf_extraction": {
         "status": "not_extracted",
@@ -472,7 +472,7 @@
       },
       "rating": "Insufficient Data",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549490+05:30"
+      "processed_at": "2026-11-29T00:43:32.798389+05:30"
     },
     {
       "symbol": "SFCTECH",
@@ -513,7 +513,7 @@
           "revenue_growth_available": false
         }
       },
-      "data_status": "NSE announcement detected; financial figures not yet verified",
+      "data_status": "NSE board-meeting outcome detected; checking official PDF for financial-results tables",
       "financial_units": "Not specified",
       "pdf_extraction": {
         "status": "not_extracted",
@@ -530,7 +530,7 @@
       },
       "rating": "Insufficient Data",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549515+05:30"
+      "processed_at": "2026-11-29T00:43:32.798420+05:30"
     },
     {
       "symbol": "KSERASERA",
@@ -571,7 +571,7 @@
           "revenue_growth_available": false
         }
       },
-      "data_status": "NSE announcement detected; financial figures not yet verified",
+      "data_status": "NSE board-meeting outcome detected; checking official PDF for financial-results tables",
       "financial_units": "Not specified",
       "pdf_extraction": {
         "status": "not_extracted",
@@ -588,7 +588,7 @@
       },
       "rating": "Insufficient Data",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549539+05:30"
+      "processed_at": "2026-11-29T00:43:32.798456+05:30"
     },
     {
       "symbol": "BCSSL",
@@ -629,7 +629,7 @@
           "revenue_growth_available": false
         }
       },
-      "data_status": "NSE announcement detected; financial figures not yet verified",
+      "data_status": "NSE board-meeting outcome detected; checking official PDF for financial-results tables",
       "financial_units": "Not specified",
       "pdf_extraction": {
         "status": "not_extracted",
@@ -646,7 +646,7 @@
       },
       "rating": "Insufficient Data",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549562+05:30"
+      "processed_at": "2026-11-29T00:43:32.798509+05:30"
     },
     {
       "symbol": "ARSHIYA",
@@ -687,7 +687,7 @@
           "revenue_growth_available": false
         }
       },
-      "data_status": "NSE announcement detected; financial figures not yet verified",
+      "data_status": "NSE board-meeting outcome detected; checking official PDF for financial-results tables",
       "financial_units": "Not specified",
       "pdf_extraction": {
         "status": "not_extracted",
@@ -704,7 +704,7 @@
       },
       "rating": "Insufficient Data",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549585+05:30"
+      "processed_at": "2026-11-29T00:43:32.798543+05:30"
     },
     {
       "symbol": "ARSHIYA",
@@ -745,7 +745,7 @@
           "revenue_growth_available": false
         }
       },
-      "data_status": "NSE announcement detected; financial figures not yet verified",
+      "data_status": "NSE board-meeting outcome detected; checking official PDF for financial-results tables",
       "financial_units": "Not specified",
       "pdf_extraction": {
         "status": "not_extracted",
@@ -762,7 +762,7 @@
       },
       "rating": "Insufficient Data",
       "expectations_rating": "Not Available",
-      "processed_at": "2026-11-29T00:41:12.549613+05:30"
+      "processed_at": "2026-11-29T00:43:32.798574+05:30"
     },
     {
       "symbol": "GVPTECH",
