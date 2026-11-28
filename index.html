@@ -512,6 +512,11 @@ h1 .n { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px;
               item.value !== undefined && item.value !== null && item.value !== '') return item.value;
         }
       }
+      // Current scanner fields are top-level. Keep nested legacy lookup too.
+      for (var topKey in a) {
+        if (Object.prototype.hasOwnProperty.call(a, topKey) && wanted.indexOf(cleanKey(topKey)) > -1 &&
+            a[topKey] !== undefined && a[topKey] !== null && a[topKey] !== '') return a[topKey];
+      }
       var sources = [a.fundamentals, a.market_data, a.yahoo_finance];
       for (var j = 0; j < sources.length; j++) {
         var obj = sources[j];
@@ -561,8 +566,9 @@ h1 .n { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px;
         'very-big': 'VERY BIG ORDER', 'big': 'BIG ORDER',
         'medium': 'MEDIUM ORDER', 'small': 'SMALL ORDER'
       };
+      var hasRequiredOrderData = orderValue !== null && marketCap !== null && marketCap > 0;
       var storedSize = a.order_size || a.order_category || sizeNames[a.subfolder] || a.subfolder;
-      addRow('Order size category', computedSize || storedSize || 'Not available');
+      addRow('Order size category', hasRequiredOrderData ? (computedSize || storedSize || 'Not available') : 'UNDISCLOSED');
       addRow('Order value', orderValue === null ? null :
         '₹' + orderValue.toLocaleString('en-IN', { maximumFractionDigits: 2 }) + ' crore');
       addRow('Market capitalisation', marketCap === null ? null :
@@ -577,8 +583,14 @@ h1 .n { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px;
     if (Array.isArray(a.details)) {
       a.details.forEach(function (it) {
         if (it && typeof it === 'object') {
+          var detailKey = cleanKey(it.label);
+          var obsoleteFundamental = ['forward p e', 'forward pe', 'eps', 'trailing eps',
+            'enterprise value', 'sector', 'industry'].indexOf(detailKey) !== -1;
+          if (isOrder && obsoleteFundamental) return;
+          // Legacy "Trailing P/E" detail is reused by the single P/E row below.
+          if (isOrder && detailKey === 'trailing p e') return;
           addRow(it.label || '', it.value, it.source);
-          displayedLabels[cleanKey(it.label)] = true;
+          displayedLabels[detailKey] = true;
         }
       });
     } else if (typeof a.details === 'string' && a.details.trim()) {
@@ -593,15 +605,10 @@ h1 .n { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px;
     // feed record omitted one of the fields. Missing source data is not guessed.
     if (isOrder) {
       var fundamentalRows = [
-        ['Trailing P/E', ['Trailing P/E', 'Trailing PE', 'trailing_pe']],
-        ['Forward P/E', ['Forward P/E', 'Forward PE', 'forward_pe']],
-        ['Price-to-book', ['Price-to-book', 'Price to book', 'price_to_book']],
-        ['Trailing EPS', ['Trailing EPS', 'EPS', 'trailing_eps']],
-        ['Enterprise value', ['Enterprise value', 'enterprise_value']],
-        ['52-week high', ['52-week high', '52 week high', 'fifty_two_week_high']],
-        ['52-week low', ['52-week low', '52 week low', 'fifty_two_week_low']],
-        ['Sector', ['Sector', 'sector']],
-        ['Industry', ['Industry', 'industry']]
+        ['P/E', ['trailing_pe', 'P/E', 'Trailing P/E', 'Trailing PE']],
+        ['Price-to-book', ['price_to_book', 'Price-to-book', 'Price to book']],
+        ['52-week high', ['fifty_two_week_high', '52-week high', '52 week high']],
+        ['52-week low', ['fifty_two_week_low', '52-week low', '52 week low']]
       ];
       fundamentalRows.forEach(function (row) {
         var key = cleanKey(row[0]);
@@ -613,7 +620,7 @@ h1 .n { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px;
     }
 
     if (a.link && /^https?:\/\//i.test(a.link)) {
-      wrap.appendChild(h('div', { class: 'actions' }, h('a', { class: 'btn', href: a.link, target: '_self', rel: 'noopener noreferrer', text: 'Open source filing' })));
+      wrap.appendChild(h('div', { class: 'actions' }, h('a', { class: 'btn', href: a.link, target: '_blank', rel: 'noopener noreferrer', text: 'Open NSE PDF filing' })));
     } else if (isOrder) {
       addRow('Source filing', 'Source filing link not available.');
     }
