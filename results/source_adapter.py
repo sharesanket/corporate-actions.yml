@@ -1,4 +1,3 @@
-
 """
 Share Sanket - Results Source Adapter
 
@@ -211,12 +210,23 @@ def normalize_financial_scopes(item):
     return output, legacy
 
 
-def is_results_announcement(item):
+def has_results_metadata(item):
+    """Return True when NSE subject/details explicitly describe financial results."""
     subject = str(item.get("subject", "")).lower().strip()
     details = str(item.get("details", "")).lower().strip()
-    if BOARD_MEETING_SUBJECT not in subject:
-        return False
-    return any(keyword in details for keyword in RESULT_KEYWORDS)
+    combined = f"{subject} {details}"
+    return any(keyword in combined for keyword in RESULT_KEYWORDS)
+
+
+def is_board_meeting_outcome(item):
+    """The scanner is intentionally limited to NSE board-meeting outcomes."""
+    subject = str(item.get("subject", "")).lower().strip()
+    return BOARD_MEETING_SUBJECT in subject
+
+
+def is_results_announcement(item):
+    """Inbox acceptance requires both the board outcome and result metadata."""
+    return is_board_meeting_outcome(item) and has_results_metadata(item)
 
 
 def classify_result_scope(text):
@@ -548,7 +558,7 @@ def enrich_announcement_from_pdf(item):
 
 
 def fetch_nse_announcements():
-    """Fetch recent NSE announcements and retain only qualifying results."""
+    """Fetch recent NSE board outcomes; confirm generic notices from their PDFs."""
     start = date.today() - timedelta(days=NSE_LOOKBACK_DAYS)
     end = date.today()
     last_error = None
@@ -581,27 +591,37 @@ def fetch_nse_announcements():
                 raise ValueError("NSE returned an unexpected announcements response")
 
             announcements = []
-            rejected_count = 0
+            board_outcome_count = 0
+            missing_pdf_count = 0
+            metadata_match_count = 0
 
             for row in payload:
                 if not isinstance(row, dict):
                     continue
 
                 subject = str(row.get("desc") or "").strip()
+                if BOARD_MEETING_SUBJECT not in subject.lower():
+                    continue
+                board_outcome_count += 1
+
                 details = str(row.get("attchmntText") or "").strip()
                 symbol = str(row.get("symbol") or "").strip().upper()
                 company = str(row.get("sm_name") or "").strip()
                 published_at = str(row.get("an_dt") or "").strip()
                 pdf_url = str(row.get("attchmntFile") or "").strip()
 
-                if not all((subject, details, symbol, company, published_at, pdf_url)):
-                    rejected_count += 1
+                if not all((symbol, company, published_at, pdf_url)):
+                    missing_pdf_count += 1
                     continue
 
                 if pdf_url.startswith("/"):
                     pdf_url = "https://www.nseindia.com" + pdf_url
                 elif pdf_url.startswith("http://"):
                     pdf_url = "https://" + pdf_url[len("http://"):]
+
+                if not is_official_url(pdf_url):
+                    missing_pdf_count += 1
+                    continue
 
                 announcement = {
                     "symbol": symbol,
@@ -616,22 +636,30 @@ def fetch_nse_announcements():
                     "financials": {},
                     "financials_by_scope": {},
                     "data_status": (
-                        "NSE announcement detected; financial figures not yet verified"
+                        "NSE board-meeting outcome detected; checking official PDF "
+                        "for financial-results tables"
                     ),
                     "financial_units": "Not specified",
                 }
 
-                if not is_results_announcement(announcement):
-                    rejected_count += 1
-                    continue
+                # NSE's attachment text is often generic or blank. Such filings
+                # are retained as candidates and admitted only after the official
+                # PDF parser confirms a recognisable financial-results statement.
+                needs_pdf_confirmation = not has_results_metadata(announcement)
+                announcement["_pdf_confirmation_required"] = needs_pdf_confirmation
+                if not needs_pdf_confirmation:
+                    metadata_match_count += 1
                 announcements.append(announcement)
 
             print(
                 f"NSE announcements fetched: {len(payload)} "
                 f"({start.isoformat()} to {end.isoformat()})"
             )
-            print(f"Matching financial-results announcements: {len(announcements)}")
-            print(f"Rejected unrelated announcements: {rejected_count}")
+            print(f"Outcome of Board Meeting notices: {board_outcome_count}")
+            print(f"Candidates with official PDF: {len(announcements)}")
+            print(f"Candidates requiring PDF confirmation: "
+                  f"{len(announcements) - metadata_match_count}")
+            print(f"Candidates missing required fields/PDF: {missing_pdf_count}")
             return announcements
 
         except Exception as exc:
@@ -722,7 +750,17 @@ def main():
         else:
             item = enrich_announcement_from_pdf(item)
 
+        requires_pdf_confirmation = bool(item.pop("_pdf_confirmation_required", False))
         status = item.get("pdf_extraction", {})
+        if requires_pdf_confirmation and not (
+            isinstance(status, dict) and status.get("status") == "extracted"
+        ):
+            print(
+                "SKIPPED non-confirmed board outcome "
+                f"{item.get('symbol', 'UNKNOWN')}: PDF did not yield a recognised results table"
+            )
+            continue
+
         if isinstance(status, dict):
             if status.get("status") == "extracted":
                 extracted_count += 1
